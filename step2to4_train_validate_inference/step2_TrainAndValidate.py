@@ -8,23 +8,27 @@ from tnscui_utils.solver import Solver as Solver_or
 
 
 def main(config):
+    #如果网络的输入数据维度或类型上变化不大，设置  torch.backends.cudnn.benchmark = true  可以增加运行效率
     cudnn.benchmark = True
+    #函数用于路径拼接文件路径,可以传入多个参数。
     config.result_path = os.path.join(config.result_path, config.Task_name+str(config.fold_K)+'_'+str(config.fold_idx))
     print(config.result_path)
+    #设置模型的路径、输出日志的路径
     config.model_path = os.path.join(config.result_path, 'models')
     config.log_dir = os.path.join(config.result_path, 'logs')
+    #如果不存在，则重新创建路径
     if not os.path.exists(config.result_path):
         os.makedirs(config.result_path)
         os.makedirs(config.model_path)
         os.makedirs(config.log_dir)
         os.makedirs(os.path.join(config.result_path,'images'))
 
-
+    #在运行此DataParallel模块之前，并行化模块必须在device_ids [0]上具有其参数和缓冲区。在执行DataParallel之前，会首先把其模型的参数放在device_ids[0]上
     if not config.DataParallel:
         os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
         os.environ["CUDA_VISIBLE_DEVICES"] = str(config.cuda_idx)
 
-
+    #输出配置
     print(config)
     f = open(os.path.join(config.result_path,'config.txt'),'w')
     for key in config.__dict__:
@@ -135,7 +139,7 @@ if __name__ == '__main__':
     parser.add_argument('--img_ch', type=int, default=1)
     parser.add_argument('--output_ch', type=int, default=1)
     parser.add_argument('--num_epochs', type=int, default=405)
-
+    #学习率衰减
     parser.add_argument('--num_epochs_decay', type=int, default=60)  # decay开始的最小epoch数
     parser.add_argument('--decay_ratio', type=float, default=0.01) #0~1,每次decay到1*ratio
     parser.add_argument('--decay_step', type=int, default=60)  # epoch
@@ -147,11 +151,14 @@ if __name__ == '__main__':
     # 设置学习率
     parser.add_argument('--lr', type=float, default=1e-4)  # 初始or最大学习率(单用lovz且多gpu的时候,lr貌似要大一些才可收敛)
     parser.add_argument('--lr_low', type=float, default=1e-12)  # 最小学习率,设置为None,则为最大学习率的1e+6分之一(不可设置为0)
-
+    #Warmup是在ResNet论文中提到的一种学习率预热的方法，它在训练开始的时候先选择使用一个较小的学习率，训练了一些epoches或者steps(比如4个epoches,10000steps),再修改为预先设置的学习率来进行训练。
     parser.add_argument('--lr_warm_epoch', type=int, default=5)  # warmup的epoch数,一般就是5~20,为0或False则不使用
     parser.add_argument('--lr_cos_epoch', type=int, default=350)  # cos退火的epoch数,一般就是总epoch数-warmup的数,为0或False则代表不使用
 
     # optimizer param
+    #adam算法
+    #由于min-batch GD在一次迭代求梯度时，只是用了部分数据集，这就不可避免地导致了梯度出现了偏差（因为掌握的信息不足以作出最明智的选择），由此使得在梯度下降的过程中出现了轻微震荡，如下图在纵向出现了震荡，而momentum可以很好地解决这个问题。
+    #momentum的核心思想就是指数加权平均，最通俗的解释就是：在求当前的梯度时，把前面一部分的梯度也考虑进来，然后通过权值计算求和，最终确定当前的梯度。与普通gradient descent的每次求梯度都是相互独立的不同，momentum对于当前的梯度加入了“经验”的元素，且如果某一轴出现了震荡，那么“正反经验”相互抵消，慢慢地梯度方向也趋于平滑，最终达到消除震荡的效果。
     parser.add_argument('--beta1', type=float, default=0.5)        # momentum1 in Adam
     parser.add_argument('--beta2', type=float, default=0.999)      # momentum2 in Adam
 
